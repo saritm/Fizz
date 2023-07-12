@@ -1,0 +1,10 @@
+.textbox-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+.textbox {
+  margin-right: 10px;
+}
