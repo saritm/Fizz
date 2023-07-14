@@ -28,6 +28,12 @@ class RepaymentRouter {
                     return res.status(500).json({"message": err.message});
                 });
         });
+
+        this._router.get('/', (req: Request, res: Response, next: NextFunction) => {
+            this.manager.getRepaymentHistory()
+                .then(insertId => res.status(200).json({"transactionId": insertId[0]}))
+                .catch(err => res.status(500).json({"message": err.message}));
+        });
     }
 }
 

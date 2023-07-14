@@ -1,4 +1,4 @@
 export const enum RepaymentType {
-    userToFizz,
-    fizzToUser
+    userToFizz = "userToFizz",
+    fizzToUser = "fizzToUser"
 };

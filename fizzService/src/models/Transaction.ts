@@ -5,10 +5,12 @@ export default class Transaction {
   public transaction_type: TransactionType;
   public price: number;
   public repayment_id: number = -1;
+  public refunded: boolean = false;
 
   constructor(title: string, type: TransactionType, price: number) {
     this.transaction_title = title;
     this.transaction_type = type;
     this.price = price;
+
   }
 }

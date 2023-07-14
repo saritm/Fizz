@@ -21,11 +21,13 @@ class Server {
 
 // initialize server app
 const server = new Server();
+const cors = require('cors');
 
 // make server app handle any route starting with '/api'
 server.app.use(express.json());
 server.app.use(express.urlencoded());
 server.app.use('/api', server.router);
+server.app.use(cors());
 
 // make server app handle any error
 server.app.use((err: ErrorHandler, req: Request, res: Response, next: NextFunction) => {
