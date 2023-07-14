@@ -5,83 +5,41 @@ import {TransactionType} from "../models/TransactionType";
 
 
 export default class TransactionManager {
-    public saveTransaction(transaction: Transaction, callback: Function) {
-        const type = transaction.transaction_type as TransactionType;
-        const newLimit =
-            type === TransactionType.PURCHASE ? -transaction.price : transaction.price;
+    public insertTransaction(transaction: Transaction): Promise<number> {
         const insertTransactionQuery =
             `INSERT INTO Transactions(transaction_title, transaction_type, price)
              VALUES (?, ?, ?); `;
 
+        return db.promise().query(
+            insertTransactionQuery,
+            [transaction.transaction_title, transaction.transaction_type, transaction.price]
+        ).then(result => (<ResultSetHeader> <unknown>result[0]).insertId)
+    }
+
+    public updateCustomerSpend(transaction: Transaction) {
+        const newLimit =
+            transaction.transaction_type === TransactionType.PURCHASE ? -transaction.price : transaction.price;
         const updateCustomerSpend =
             `UPDATE Customer original
                  JOIN Customer updated
              ON original.id = updated.id
-                 SET updated.spending_limit = original.spending_limit + ${newLimit};`;
-
-        db.beginTransaction(function (err) {
-            if (err) {
-                throw err;
-            }
-
-            db.query(
-                insertTransactionQuery,
-                [transaction.transaction_title, transaction.transaction_type, transaction.price],
-                (err, result) => {
-                    console.log(err)
-                    if (err) {
-                        callback(err)
-                        db.rollback(function () {
-                            callback(err);
-                        });
-                    }
-                    const insertId = (<ResultSetHeader>result).insertId;
-                    db.query(
-                        updateCustomerSpend,
-                        (err, result) => {
-                            console.log(err)
-                            if (err) {
-                                callback(err)
-                                db.rollback(function () {
-                                    callback(err);
-                                });
-                            }
-                            db.commit(function (err) {
-                                if (err) {
-                                    db.rollback(function () {
-                                        callback(err);
-                                    });
-                                }
-                                console.log('Transaction Completed Successfully.');
-                                callback(null, insertId);
-                            });
-                        });
-                });
-        });
+                 SET updated.spending_limit = original.spending_limit + ?`;
+        return db.promise().query(updateCustomerSpend, [newLimit]);
     }
-    // public updateRepaymentId(newRepaymentId: number, callback: Function): Promise<number> {
-    //     return new Promise((resolve, reject) => {
-    //         const updateQuery = `
-    //     START TRANSACTION;
-    //     UPDATE Transactions SET repayment_id = ${newRepaymentId} WHERE repayment_id = null;
-    //     COMMIT;
-    //     `;
-    //
-    //         db.query(
-    //             updateQuery,
-    //             [newRepaymentId],
-    //             (err, result) => {
-    //                 if (err) {
-    //                     callback(err)
-    //                 }
-    //                 ;
-    //
-    //                 const insertId = (<ResultSetHeader>result).insertId;
-    //                 callback(null, insertId);
-    //             }
-    //         );
-    //     });
-    // }
+
+    public saveTransaction(transaction: Transaction): Promise<number> {
+        return db.promise().beginTransaction()
+            .then(() => this.insertTransaction(transaction))
+            .then((insertId) => this.updateCustomerSpend(transaction).then(() => insertId))
+            .then((insertId) => db.promise().commit().then(() => insertId))
+            .catch((err) => db.promise().rollback().then(() => {
+                throw err
+            }));
+    }
+    public updateRepaymentId(): Promise<any> {
+            const updateQuery = `UPDATE Transactions SET repayment_id = 1 WHERE repayment_id is null;`;
+            return db.promise().query(updateQuery);
+    }
 
     public closeConnection(): void {
         db.end();

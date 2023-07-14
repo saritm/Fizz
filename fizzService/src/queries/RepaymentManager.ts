@@ -1,92 +1,79 @@
-import mysql from 'mysql';
+import {db} from "../config/connection";
+import {RowDataPacket} from "mysql2/index";
+import Repayment from "../models/Repayment";
+import {RepaymentType} from "../models/RepaymentType";
+import TransactionManager from './TransactionsManager';
 
-class RepaymentManager {
-  private connection: mysql.Connection;
 
-  constructor(config: mysql.ConnectionConfig) {
-    this.connection = mysql.createConnection(config);
-  }
+export default class RepaymentManager {
+    private CUSTOMER_SPEND_LIMIT: number = 50
 
-  public insertRepayment(repayment: Repayment): Promise<number> {
-    return new Promise((resolve, reject) => {
-      const insertQuery = 'INSERT INTO Repayment SET ?';
+    private manager = new TransactionManager();
 
-      this.connection.query(insertQuery, repayment, (error, results) => {
-        if (error) {
-          reject(error);
-        } else {
-          resolve(results.insertId);
-        }
-      });
-    });
-  }
+    public updateCustomerSpend = () => {
+        const updateQuery = `UPDATE Customer
+                             SET spending_limit = ${this.CUSTOMER_SPEND_LIMIT}
+                             WHERE id = 1 `;
+        return new Promise((resolve, reject) => {
+            db.query(updateQuery, (error, results) => {
+                    if (error) {
+                        return reject(error);
+                    } else {
+                        return resolve(results)
+                    }
+                }
+            )
+        })
+    }
 
-  public updateNumTransactions(repaymentId: number, newNumTransactions: number): Promise<number> {
-    return new Promise((resolve, reject) => {
-      const updateQuery = `UPDATE Repayment SET num_transactions = ${newNumTransactions} WHERE id = ${repaymentId}`;
+    public getCustomerSpend(): Promise<number> {
+        const getCustomerSpend = 'SELECT spending_limit FROM Customer WHERE id=1';
+        return db.promise().query(getCustomerSpend)
+            .then((result) => this.parseCustomerSpend(<RowDataPacket>result[0]));
+    }
 
-      this.connection.query(updateQuery, (error, results) => {
-        if (error) {
-          reject(error);
-        } else {
-          resolve(results.affectedRows);
-        }
-      });
-    });
-  }
 
-  public closeConnection(): void {
-    this.connection.end();
-  }
+    public parseCustomerSpend(result: RowDataPacket): number {
+        const customer = result[0];
+        return customer.spending_limit;
+    }
+
+    public getUnresolvedTransactions(): Promise<Array<number>> {
+        const getRefundTransactions = `SELECT id FROM Transactions WHERE repayment_id is NULL`;
+        return db.promise().query(getRefundTransactions)
+            .then((results) => this.parseTransactionIds(<RowDataPacket>results));
+    }
+
+    public parseTransactionIds(result: RowDataPacket): Array<number> {
+        return result[0].map((transaction: RowDataPacket) => transaction.id)
+    }
+
+    public updateRepaymentTable(direction: RepaymentType, totalAmount: number, totalTransactions: number) {
+        const insertRepayment = `INSERT INTO Repayment(direction, amount, num_transactions)
+                                 VALUES (${direction}, ${totalAmount}, ${totalTransactions});`
+        return db.promise().query(insertRepayment);
+    }
+
+    public insertRepayment(): Promise<void> {
+        var self = this;
+
+        let direction = RepaymentType.fizzToUser;
+        const customerSpendPromise: Promise<number> = self.getCustomerSpend()
+        const unresolvedTransactionsPromise: Promise<Array<number>> = self.getUnresolvedTransactions()
+
+        return Promise.all([customerSpendPromise, unresolvedTransactionsPromise])
+            .then(results => {
+                const [customer_spend, transaction_ids] = results;
+                const repaymentAmount = Math.abs(customer_spend - this.CUSTOMER_SPEND_LIMIT)
+                return db.promise().beginTransaction().then(() => {
+                    const updateRepayment = self.updateRepaymentTable(direction, repaymentAmount, transaction_ids.length)
+                    const updateSpend = self.updateCustomerSpend();
+                    const updateRepaymentId = self.manager.updateRepaymentId();
+
+                    return Promise.all([updateRepayment, updateSpend, updateRepaymentId])
+                        .then(() => db.promise().commit())
+                        .catch(() => db.promise().rollback())
+                })
+            })
+    }
 }
-
-// Example usage:
-
-// Define the Repayment class
-class Repayment {
-  public direction: string;
-  public amount: number;
-  public num_transactions: number;
-
-  constructor(direction: string, amount: number, numTransactions: number) {
-    this.direction = direction;
-    this.amount = amount;
-    this.num_transactions = numTransactions;
-  }
-}
-
-// Create a RepaymentManager instance
-const repaymentManager = new RepaymentManager({
-  host: 'localhost',
-  user: 'your_username',
-  password: 'your_password',
-  database: 'your_database',
-});
-
-// Define a new repayment
-const newRepayment = new Repayment('userToFizz', 10.99, 5);
-
-// Insert the repayment into the table
-repaymentManager
-  .insertRepayment(newRepayment)
-  .then(insertedId => {
-    console.log('New repayment inserted successfully!');
-    console.log('Inserted repayment ID:', insertedId);
-
-    // Update the number of transactions for the inserted repayment
-    const newNumTransactions = 7;
-    return repaymentManager.updateNumTransactions(insertedId, newNumTransactions);
-  })
-  .then(affectedRows => {
-    console.log('Number of transactions updated successfully!');
-    console.log('Affected rows:', affectedRows);
-
-    // Close the MySQL connection
-    repaymentManager.closeConnection();
-  })
-  .catch(error => {
-    console.error('Error:', error);
-
-    // Close the MySQL connection in case of an error
-    repaymentManager.closeConnection();
-  });
