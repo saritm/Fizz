@@ -1,17 +1,24 @@
-import React from 'react';
-import './textbox.css';
+import React from "react";
 
 interface ButtonProps {
-  onClick: () => void;
+  onClick: () => Promise<void>;
   text: string;
 }
 
 const Button: React.FC<ButtonProps> = ({ onClick, text }) => {
+  const handleClick = async () => {
+    try {
+      await onClick();
+    } catch (error) {
+      console.error("An error occurred:", error);
+      // Handle any errors from the request or response
+    }
+  };
+
   return (
-    <div className="textbox-container">
-      <button onClick={onClick}>{text}</button>
+    <div className="button-container">
+      <button onClick={handleClick}>{text}</button>
     </div>
-    
   );
 };
 
