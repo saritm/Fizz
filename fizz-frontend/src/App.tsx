@@ -1,12 +1,18 @@
 import React, { useState } from "react";
 import TextBox from "./Components/textbox";
+import TransactionTable from "./Components/transactionTable";
+import RepaymentTable from "./Components/repaymentTable";
 
 const App: React.FC = () => {
   const [purchaseSuccess, setPurchaseSuccess] = useState(false);
   const [value1, setValue1] = useState("");
   const [value2, setValue2] = useState(0);
+  const [transactions, setTransactions] = useState<Array<Transaction>>([]);
+  const [transactionsFetched, setTransactionsFetched] = useState(false);
+  const [isRepaymentButtonClicked, setRepaymentButtonClicked] = useState(false);
 
   const handleButtonClick = async () => {
+    setRepaymentButtonClicked(false);
     console.log(value1, value2);
     try {
       // Make the POST request here using value1 and value2
@@ -30,11 +36,28 @@ const App: React.FC = () => {
     }
   };
 
+  const handleTransactionButtonClick = () => {
+    const fetchTransactions = async () => {
+      const response = await fetch(
+        "http://localhost:3000/api/transaction/history"
+      );
+      const body = await response.json();
+      setTransactions(body["transactions"]);
+      setTransactionsFetched(true);
+    };
+
+    fetchTransactions();
+  };
+
+  const handleRepaymentButtonClick = () => {
+    setRepaymentButtonClicked(true);
+  };
+
   return (
     <div className="app-container">
-      <h1>My App</h1>
+      <h1 className="app-heading">My App </h1>
       {purchaseSuccess ? (
-        <div>Purchase successful!</div>
+        <div className="purchase-success">Purchase successful!</div>
       ) : (
         <TextBox
           value1={value1}
@@ -45,6 +68,15 @@ const App: React.FC = () => {
           buttonText="Simulate Purchase"
         />
       )}
+
+      <button className="button" onClick={handleTransactionButtonClick}>
+        Get Transaction History
+      </button>
+      <button className="button" onClick={handleButtonClick}>
+        Get Repayment History
+      </button>
+      {transactionsFetched && <TransactionTable transactions={transactions} />}
+      {isRepaymentButtonClicked && <RepaymentTable />}
     </div>
   );
 };
